@@ -1,0 +1,16 @@
+{
+  "name": "openhyperknow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source AI learning platform — Hyperknow clone on pi AgentSession SDK",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev": "concurrently -n backend,frontend \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "test:e2e": "npm --prefix backend run dev & sleep 4 && cd backend && node test/e2e-course-gen.mjs && node test/e2e-whiteboard.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
