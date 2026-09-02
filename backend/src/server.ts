@@ -1,5 +1,6 @@
 import { config } from "./config.js";
 import { runCourseGeneration, resolvePendingProfile, type CourseStructure, type Unit } from "./agents/teacher.js";
+import { runWhiteboardSession, resolveAsk } from "./agents/whiteboard.js";
 
 const server = config; // keep import for side-effect (dotenv)
 
@@ -28,6 +29,56 @@ app.get("/api/courses/:id", async (req, reply) => {
 });
 
 app.register(async (app) => {
+  app.get("/api/v1/whiteboard/ws", { websocket: true }, (socket) => {
+    socket.on("message", async (raw: Buffer) => {
+      let msg: any;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return;
+      }
+
+      switch (msg.type) {
+        case "ping":
+          socket.send(JSON.stringify({ type: "pong", t: msg.t ?? Date.now() }));
+          break;
+
+        case "start_session":
+        case "resume_or_start_course_session": {
+          try {
+            await runWhiteboardSession({
+              lectureTitle: String(msg.lecture_title ?? msg.topic ?? "Introduction"),
+              lectureOutline: msg.lecture_outline,
+              provider: msg.provider,
+              model: msg.model,
+              thinkingLevel: msg.thinking_level,
+              ws: socket,
+            });
+          } catch (err) {
+            socket.send(JSON.stringify({ type: "error", message: err instanceof Error ? err.message : String(err) }));
+          }
+          break;
+        }
+
+        case "user_message":
+          // student answered an ask() prompt (or free-text interjection)
+          resolveAsk(socket, String(msg.message ?? ""));
+          break;
+
+        case "question_answers":
+          resolveAsk(socket, JSON.stringify(msg.answers));
+          break;
+
+        case "stop_generation":
+          socket.close();
+          break;
+
+        default:
+          break;
+      }
+    });
+  });
+
   app.get("/api/v1/course-generation/ws", { websocket: true }, (socket, req) => {
     let busy = false;
 
