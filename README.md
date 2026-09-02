@@ -13,6 +13,15 @@ Turn any learning goal into a 1:1 AI course: web research → profile questions 
 - 🏆 **Assessments** — MCQ per unit with instant scoring (Mastered / Proficient / Review)
 - 🔌 **Multi-provider LLM** — pick any provider/model pi supports (GitHub Copilot, MiniMax, Codex, Anthropic, OpenAI, Ollama, ...) — nothing is hardcoded
 
+## Whiteboard (interactive teaching)
+
+The 🖊️ Whiteboard tab reproduces Hyperknow's teaching session:
+
+- The agent narrates (left stream) while placing **handwritten note cards** (Kalam font, cream paper) and **mermaid diagrams** on a dotted-grid canvas
+- Multi-page lectures with ‹ › navigation
+- **Interrupt**: the agent pauses mid-lecture to ask a question; the student answers; the agent acknowledges and continues from that point
+- Every element carries a `step_id` (Hyperknow's sync protocol)
+
 ## Architecture
 
 ```
