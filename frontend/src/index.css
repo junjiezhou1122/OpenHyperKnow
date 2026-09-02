@@ -1,0 +1,12 @@
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
+
+:root {
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html,
+body,
+#root {
+  min-height: 100vh;
+}
