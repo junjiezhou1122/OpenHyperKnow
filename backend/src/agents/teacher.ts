@@ -30,10 +30,20 @@ export type ClientEvent =
   | { type: "tool_execution"; tool_name: string; tool_status: "in_progress" | "completed"; data?: unknown }
   | { type: "questions_step"; questions: ProfileQuestion[] }
   | { type: "course_structure_ready"; structure: CourseStructure }
+  | { type: "blueprint_ready"; blueprint: CourseBlueprint }
   | { type: "unit_ready"; unit_index: number; unit: Unit }
   | { type: "course_generation_complete"; course: CourseStructure }
   | { type: "course_generation_error"; message: string }
   | { type: "complete" };
+
+/** The blueprint checkpoint — Hyperknow's "confirm before generating details". */
+export interface CourseBlueprint {
+  title: string;
+  description: string;
+  tags: string[];
+  sessions: number;
+  units: { title: string; description: string }[];
+}
 
 export interface ProfileQuestion {
   id: string;
@@ -90,9 +100,17 @@ let pendingProfile: {
   resolve: (answers: SubmitProfileParams) => void;
 } | null = null;
 
+let pendingBlueprintConfirm: ((confirmed: boolean) => void) | null = null;
+
 export function resolvePendingProfile(answers: SubmitProfileParams) {
   pendingProfile?.resolve(answers);
   pendingProfile = null;
+}
+
+export function resolveBlueprintConfirm(confirmed: boolean, feedback?: string) {
+  pendingBlueprintConfirm?.(confirmed);
+  pendingBlueprintConfirm = null;
+  return feedback;
 }
 
 const AskUserParams = Type.Object({
@@ -164,20 +182,29 @@ function makeTools(ws: WebSocket | null, emit: (e: ClientEvent) => void): ToolDe
     },
   };
 
-  const emitOutline: ToolDefinition = {
-    name: "emit_course_outline",
-    label: "Emit Course Outline",
-    description: "Emit the course outline (title, description, tags, and the list of unit titles with one-line descriptions). Call this once before generating unit content.",
+  const emitBlueprint: ToolDefinition = {
+    name: "emit_blueprint",
+    label: "Emit Course Blueprint",
+    description: "After the user answers the profile questions, emit the course blueprint (title, description, tags, estimated total sessions, and the list of unit titles with one-line descriptions). This pauses for user confirmation before you continue.",
     parameters: Type.Object({
       title: Type.String(),
       description: Type.String(),
       tags: Type.Array(Type.String()),
+      sessions: Type.Number({ description: "Estimated total teaching sessions across all units" }),
       units: Type.Array(Type.Object({ title: Type.String(), description: Type.String() })),
     }),
     execute: async (_id, rawParams) => {
-      const params = rawParams as { title: string; description: string; tags: string[]; units: { title: string; description: string }[] };
-      emit({ type: "course_structure_ready", structure: { ...params, units: [] } });
-      return toolResult("Outline emitted. Now generate content for EACH unit, one emit_unit call per unit, in order.");
+      const params = rawParams as { title: string; description: string; tags: string[]; sessions: number; units: { title: string; description: string }[] };
+      emit({ type: "blueprint_ready", blueprint: params });
+      // ⭐️ interrupt — wait for user confirmation over WS
+      const confirmed = await new Promise<boolean>((resolve) => {
+        pendingBlueprintConfirm = (v) => resolve(v);
+      });
+      if (!confirmed) {
+        return toolResult("User rejected the blueprint. Revise it per their feedback and call emit_blueprint again with a new version.");
+      }
+      emit({ type: "course_structure_ready", structure: { title: params.title, description: params.description, tags: params.tags, units: [] } });
+      return toolResult("Blueprint confirmed. Now generate content for EACH unit, one emit_unit call per unit, in order.");
     },
   };
 
@@ -216,7 +243,7 @@ function makeTools(ws: WebSocket | null, emit: (e: ClientEvent) => void): ToolDe
     },
   };
 
-  return [searchWeb, askUser, emitOutline, emitUnit];
+  return [searchWeb, askUser, emitBlueprint, emitUnit];
 }
 
 /* ------------------------------------------------------------------ */
@@ -232,8 +259,8 @@ Workflow (follow strictly, in order):
    - Q2 (single): "Which primary lens would you like to use to explore this topic?" — 3-4 discipline-specific options.
    - Q3 (single): "What is your target mastery level?" — e.g. Conceptual Fluency / Applied Proficiency / Academic Rigor.
    - Q4 (single): "Which course scale fits your schedule?" — Essential Overview (3-4 units, 6-8h) / Comprehensive Practitioner (5-7 units, 12-15h) / Deep Dive Specialization (8-10 units, 20h+).
-3. Call emit_course_outline once with the course blueprint: title, description, tags, and unit titles with one-line descriptions. Match the lens, mastery and scale from the answers; skip content the user already knows.
-4. For EACH unit in order, call emit_unit with the full unit content (lectures, lessons with 300-800 word markdown content, practice Q/A per lesson, 3-5 MCQ assessment per unit).
+3. Call emit_blueprint ONCE with the course blueprint: title, description, tags, estimated total sessions (based on scale: Essential ≈ 12-18, Practitioner ≈ 20-30, Deep Dive ≈ 35-50), and unit titles with one-line descriptions. Match the lens, mastery and scale from the answers; skip content the user already knows. The user will confirm or reject it — if rejected with feedback, revise and re-emit.
+4. After confirmation, for EACH unit in order, call emit_unit with the full unit content (lectures, lessons with 300-800 word markdown content, practice Q/A per lesson, 3-5 MCQ assessment per unit).
 5. After the last unit, give a 1-paragraph summary of the course design decisions.
 
 Each lecture should have 2-3 lessons unless the scale is small. Quality bar for lesson content: concrete examples, common mistakes, key points. Practice: 2-3 Q/A per lesson.`;

@@ -3,7 +3,7 @@ import type { CourseStructure, Unit } from "../lib/protocol";
 import { Markdown } from "./Markdown";
 
 /** Course learning view — unit sidebar + lecture content (Hyperknow course page style). */
-export function CourseView({ course, onRestart }: { course: CourseStructure; onRestart: () => void }) {
+export function CourseView({ course, courseId, onRestart, onOpenCourses }: { course: CourseStructure; courseId?: string | null; onRestart: () => void; onOpenCourses?: () => void }) {
   const [unitIdx, setUnitIdx] = useState(0);
   const [lectureIdx, setLectureIdx] = useState(0);
   const [lessonIdx, setLessonIdx] = useState(0);
@@ -29,6 +29,16 @@ export function CourseView({ course, onRestart }: { course: CourseStructure; onR
 
   return (
     <div className="flex min-h-screen bg-neutral-50">
+      {courseId && (
+        <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2">
+          <button
+            onClick={() => courseId && onOpenCourses?.()}
+            className="rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white shadow-lg transition hover:bg-neutral-700"
+          >
+            ✓ Course saved — open course page
+          </button>
+        </div>
+      )}
       {/* Sidebar */}
       <aside className="sticky top-0 h-screen w-80 shrink-0 overflow-y-auto border-r border-neutral-200 bg-white">
         <div className="border-b border-neutral-200 p-4">

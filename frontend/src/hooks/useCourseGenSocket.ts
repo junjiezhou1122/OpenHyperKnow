@@ -107,6 +107,13 @@ export function useCourseGenSocket() {
     [send],
   );
 
+  const confirmBlueprint = useCallback(
+    (confirmed: boolean, feedback?: string) => {
+      send({ type: "blueprint_confirm", confirmed, feedback });
+    },
+    [send],
+  );
+
   const stop = useCallback(() => {
     send({ type: "stop_course_generation" });
     wsRef.current?.close();
@@ -119,5 +126,5 @@ export function useCourseGenSocket() {
     };
   }, [stopHeartbeat]);
 
-  return { gen, conn, startGeneration, submitAnswers, stop };
+  return { gen, conn, startGeneration, submitAnswers, confirmBlueprint, stop };
 }

@@ -45,6 +45,14 @@ export interface CourseStructure {
 
 export type Phase = "documents" | "research" | "initial" | "crafting" | "refining";
 
+export interface CourseBlueprint {
+  title: string;
+  description: string;
+  tags: string[];
+  sessions: number;
+  unitTitles: { title: string; description: string }[];
+}
+
 export type ServerEvent =
   | { type: "agent_step"; step: string; status: "loading" | "completed"; title?: string }
   | { type: "content_chunk"; delta: string }
@@ -52,8 +60,9 @@ export type ServerEvent =
   | { type: "tool_execution"; tool_name: string; tool_status: "in_progress" | "completed"; data?: unknown }
   | { type: "questions_step"; questions: ProfileQuestion[] }
   | { type: "course_structure_ready"; structure: Pick<CourseStructure, "title" | "description" | "tags"> & { units: { title: string; description: string }[] } }
+  | { type: "blueprint_ready"; blueprint: CourseBlueprint }
+  | { type: "course_generation_complete"; course: CourseStructure; courseId?: string }
   | { type: "unit_ready"; unit_index: number; unit: Unit }
-  | { type: "course_generation_complete"; course: CourseStructure }
   | { type: "course_generation_error"; message: string }
   | { type: "complete" }
   | { type: "pong"; ts: number };
@@ -87,12 +96,16 @@ export interface CourseGenState {
   activeTool: string | null;
   /** Profile questions waiting for answers */
   questions: ProfileQuestion[] | null;
-  /** Outline once emitted */
+  /** Blueprint awaiting confirmation (Hyperknow checkpoint 3) */
+  blueprint: CourseBlueprint | null;
+  /** Outline once confirmed */
   outline: CourseGenStateOutline | null;
   /** Units received so far, keyed by index */
   units: Map<number, Unit>;
   /** Final assembled course */
   course: CourseStructure | null;
+  /** Saved course id */
+  courseId: string | null;
   /** Error */
   error: string | null;
   /** Generation finished */
@@ -122,9 +135,11 @@ export const emptyCourseGenState = (): CourseGenState => ({
   text: "",
   activeTool: null,
   questions: null,
+  blueprint: null,
   outline: null,
   units: new Map(),
   course: null,
+  courseId: null,
   error: null,
   done: false,
 });
@@ -157,6 +172,21 @@ export function courseGenReducer(state: CourseGenState, msg: ServerEvent): Cours
         phasesDone: new Set([...state.phasesDone, "research"]),
       };
 
+    case "blueprint_ready":
+      return {
+        ...state,
+        blueprint: {
+          title: msg.blueprint.title,
+          description: msg.blueprint.description,
+          tags: msg.blueprint.tags,
+          sessions: msg.blueprint.sessions,
+          unitTitles: msg.blueprint.units,
+        },
+        questions: null,
+        phase: "crafting",
+        phasesDone: new Set([...state.phasesDone, "initial"]),
+      };
+
     case "course_structure_ready":
       return {
         ...state,
@@ -166,7 +196,7 @@ export function courseGenReducer(state: CourseGenState, msg: ServerEvent): Cours
           tags: msg.structure.tags,
           unitTitles: msg.structure.units,
         },
-        questions: null,
+        blueprint: null,
         phase: "crafting",
         phasesDone: new Set([...state.phasesDone, "initial"]),
       };
@@ -185,6 +215,7 @@ export function courseGenReducer(state: CourseGenState, msg: ServerEvent): Cours
       return {
         ...state,
         course: msg.course,
+        courseId: msg.courseId ?? null,
         phase: null,
         phasesDone: new Set(PHASES),
         done: true,

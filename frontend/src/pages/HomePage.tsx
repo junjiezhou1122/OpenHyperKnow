@@ -10,8 +10,8 @@ const PROVIDERS = [
   { id: "openai-codex", label: "Codex", models: ["gpt-5.4", "gpt-5.4-mini"] },
 ];
 
-export function HomePage() {
-  const { gen, conn, startGeneration, submitAnswers, stop } = useCourseGenSocket();
+export function HomePage({ onNavigateCourses }: { onNavigateCourses?: () => void }) {
+  const { gen, conn, startGeneration, submitAnswers, confirmBlueprint, stop } = useCourseGenSocket();
   const [topic, setTopic] = useState("");
   const [provider, setProvider] = useState(PROVIDERS[0].id);
   const [model, setModel] = useState(PROVIDERS[0].models[0]);
@@ -52,7 +52,7 @@ export function HomePage() {
   };
 
   if (gen.course) {
-    return <CourseView course={gen.course} onRestart={() => location.reload()} />;
+    return <CourseView course={gen.course} courseId={gen.courseId} onRestart={() => location.reload()} onOpenCourses={() => onNavigateCourses?.()} />;
   }
 
   return (
@@ -197,6 +197,49 @@ export function HomePage() {
             >
               Submit Answers
             </button>
+          </div>
+        )}
+
+        {/* Blueprint confirm — Hyperknow checkpoint */}
+        {gen.blueprint && (
+          <div className="mb-6 rounded-xl border border-indigo-200 bg-white p-6 shadow-sm">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-indigo-500">Course Blueprint</div>
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-xl font-bold">{gen.blueprint.title}</h2>
+              <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs text-neutral-500">
+                {gen.blueprint.sessions} sessions
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-neutral-600">{gen.blueprint.description}</p>
+            <div className="mt-3 space-y-1.5">
+              {gen.blueprint.unitTitles.map((u, i) => (
+                <div key={i} className="flex items-baseline gap-2 rounded-lg bg-neutral-50 p-2.5 text-sm">
+                  <span className="font-semibold text-indigo-500">{i + 1}.</span>
+                  <span className="font-medium">{u.title}</span>
+                  <span className="text-xs text-neutral-400">— {u.description}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 mb-3 text-xs text-neutral-400">
+              Review the structure above. You can regenerate with feedback, or confirm to generate the full course content.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  const fb = prompt("What should change in the blueprint? (leave empty to just regenerate)");
+                  confirmBlueprint(false, fb ?? "");
+                }}
+                className="rounded-lg border border-neutral-300 px-4 py-2.5 text-sm font-medium hover:bg-neutral-50"
+              >
+                ✎ Edit blueprint
+              </button>
+              <button
+                onClick={() => confirmBlueprint(true)}
+                className="flex-1 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500"
+              >
+                ✓ Looks good, continue generating details
+              </button>
+            </div>
           </div>
         )}
 
