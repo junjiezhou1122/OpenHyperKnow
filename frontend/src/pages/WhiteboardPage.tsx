@@ -80,7 +80,7 @@ interface WhiteboardState {
 const COL_W = 445; // scene-unit column width (matches Hyperknow)
 const COL_GAP = 60;
 const CARD_GAP = 24;
-const BOARD_TOP = 0;
+const BOARD_TOP = 60; // leave room for the column title above
 
 const emptyState = (): WhiteboardState => ({
   sessionId: null,
@@ -289,43 +289,16 @@ function buildSceneElements(pages: BoardPage[], pageIndex: number, pageOffsets: 
   const elements: any[] = [];
 
   page.columns.forEach((col, ci) => {
-    elements.push({
-      type: "text",
-      id: `coltitle-${page.id}-${ci}`,
-      x: off.x + col.x,
-      y: off.y - 60,
-      width: COL_W,
-      height: 40,
-      text: col.title,
-      fontSize: 28,
-      fontFamily: 1, // Virgil/Excalifont hand-drawn
-      strokeColor: EXCAL_PURPLE,
-      backgroundColor: "transparent",
-      fillStyle: "solid",
-      strokeWidth: 1,
-      strokeStyle: "solid",
-      roughness: 1,
-      opacity: 100,
-      angle: 0,
-      seed: ci * 7919 + 11,
-      version: 1,
-      versionNonce: 1,
-      isDeleted: false,
-      boundElements: null,
-      updated: 1,
-      link: null,
-      locked: false,
-      groupIds: [],
-      frameId: null,
-      roundness: null,
-    });
-    // marker highlight bar behind the title
+    const x = off.x + col.x;
+    const y = off.y;
+    const titleW = Math.min(COL_W, col.title.length * 15 + 24);
+    // marker highlight bar (below the text in z-order)
     elements.push({
       type: "rectangle",
       id: `colhl-${page.id}-${ci}`,
-      x: off.x + col.x - 4,
-      y: off.y - 34,
-      width: Math.min(COL_W, col.title.length * 15 + 16),
+      x: x - 4,
+      y: y + 16,
+      width: titleW,
       height: 14,
       strokeColor: "transparent",
       backgroundColor: "#fde68a",
@@ -338,6 +311,43 @@ function buildSceneElements(pages: BoardPage[], pageIndex: number, pageOffsets: 
       seed: ci * 104729 + 7,
       version: 1,
       versionNonce: 2,
+      isDeleted: false,
+      boundElements: null,
+      updated: 1,
+      link: null,
+      locked: false,
+      groupIds: [],
+      frameId: null,
+      roundness: null,
+    });
+    // column title — full text-element schema
+    elements.push({
+      type: "text",
+      id: `coltitle-${page.id}-${ci}`,
+      x,
+      y,
+      width: titleW,
+      height: 35,
+      text: col.title,
+      fontSize: 28,
+      fontFamily: 1, // hand-drawn (Excalifont/Virgil)
+      textAlign: "left",
+      verticalAlign: "top",
+      containerId: null,
+      originalText: col.title,
+      autoResize: true,
+      lineHeight: 1.25,
+      angle: 0,
+      strokeColor: EXCAL_PURPLE,
+      backgroundColor: "transparent",
+      fillStyle: "solid",
+      strokeWidth: 1,
+      strokeStyle: "solid",
+      roughness: 1,
+      opacity: 100,
+      seed: ci * 7919 + 11,
+      version: 1,
+      versionNonce: 1,
       isDeleted: false,
       boundElements: null,
       updated: 1,
@@ -361,7 +371,13 @@ interface Viewport {
   zoom: number;
 }
 
-export function WhiteboardPage({ onBack }: { onBack: () => void }) {
+export function WhiteboardPage({
+  onBack,
+  initialLecture,
+}: {
+  onBack: () => void;
+  initialLecture?: { title: string; outline?: string };
+}) {
   const [state, dispatch] = useReducer(reducer, null, emptyState);
   const [viewport, setViewport] = useState<Viewport>({ scrollX: 0, scrollY: 0, zoom: 0.7 });
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
@@ -392,18 +408,6 @@ export function WhiteboardPage({ onBack }: { onBack: () => void }) {
     [],
   );
 
-  /* ---- push column titles / decorations into the scene ---- */
-  const sceneSig = useMemo(() => {
-    const p = state.pages[state.activePage];
-    return p ? p.id + ":" + p.columns.map((c) => c.title).join("|") : "";
-  }, [state.pages, state.activePage]);
-
-  useEffect(() => {
-    if (!api || !sceneSig) return;
-    const elements = buildSceneElements(state.pages, state.activePage, new Map());
-    // merge with existing (keep decorations from highlights later)
-    api.updateScene({ elements } as any);
-  }, [api, sceneSig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---- zoom % control ---- */
   const setZoom = (z: number) => {
@@ -411,8 +415,10 @@ export function WhiteboardPage({ onBack }: { onBack: () => void }) {
   };
 
   /* ---- ws ---- */
-  const start = async () => {
-    if (!topic.trim()) return;
+  const start = async (title?: string, outline?: string) => {
+    const lectureTitle = title ?? topic;
+    if (!lectureTitle.trim()) return;
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${proto}://${location.host}/api/v1/whiteboard/ws`);
     wsRef.current = ws;
@@ -422,9 +428,27 @@ export function WhiteboardPage({ onBack }: { onBack: () => void }) {
       } catch { /* ignore */ }
     };
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: "start_session", lecture_title: topic, provider: "github-copilot", model: "gpt-4.1", thinking_level: "low" }));
+      ws.send(
+        JSON.stringify({
+          type: "start_session",
+          lecture_title: lectureTitle,
+          lecture_outline: outline,
+          provider: "github-copilot",
+          model: "gpt-4.1",
+          thinking_level: "low",
+        }),
+      );
     };
   };
+
+  // ⭐️ Auto-start when arriving from a course's Learn button — no manual input needed
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (initialLecture && !autoStartedRef.current) {
+      autoStartedRef.current = true;
+      start(initialLecture.title, initialLecture.outline);
+    }
+  }, [initialLecture]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendAnswer = (text: string) => {
     wsRef.current?.send(JSON.stringify({ type: "user_message", message: text }));
@@ -456,7 +480,7 @@ export function WhiteboardPage({ onBack }: { onBack: () => void }) {
           ✕
         </button>
         <div className="rounded-full bg-white px-4 py-1.5 text-sm font-semibold shadow-sm ring-1 ring-neutral-200">
-          {page?.title ?? "Whiteboard"}
+          {page && (page.columns.length > 0 || page.title !== "Lecture") ? page.title : (initialLecture?.title ?? "Lecture")}
         </div>
 
         <div className="mx-auto flex items-center gap-1">
@@ -548,6 +572,22 @@ export function WhiteboardPage({ onBack }: { onBack: () => void }) {
           <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
             {page?.columns.map((col, ci) => (
               <div key={ci}>
+                {/* column title — DOM overlay, scales with zoom like Excalidraw text */}
+                {col.title && (
+                  <div
+                    className="absolute"
+                    style={{
+                      left: toViewport(col.x, 0, viewport).left,
+                      top: toViewport(col.x, 0, viewport).top,
+                      width: col.w ?? COL_W,
+                      transform: `scale(${viewport.zoom})`,
+                      transformOrigin: "top left",
+                      fontFamily: FONT_STACK,
+                    }}
+                  >
+                    <BoardTitle>{col.title}</BoardTitle>
+                  </div>
+                )}
                 {col.items.map((item) => {
                   const vp = toViewport(item.sceneX, item.sceneY, viewport);
                   const key = item.uid;

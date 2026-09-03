@@ -8,13 +8,22 @@ type Route =
   | { name: "home" }
   | { name: "courses" }
   | { name: "course"; id: string }
-  | { name: "whiteboard" };
+  | { name: "whiteboard"; lectureTitle?: string; lectureOutline?: string };
 
 export default function App() {
   const [route, setRoute] = useState<Route>({ name: "home" });
 
   if (route.name === "whiteboard") {
-    return <WhiteboardPage onBack={() => setRoute({ name: "home" })} />;
+    return (
+      <WhiteboardPage
+        onBack={() => setRoute({ name: "home" })}
+        initialLecture={
+          route.lectureTitle
+            ? { title: route.lectureTitle, outline: route.lectureOutline }
+            : undefined
+        }
+      />
+    );
   }
   if (route.name === "courses") {
     return <CoursesPage onOpen={(id) => setRoute({ name: "course", id })} onBack={() => setRoute({ name: "home" })} />;
@@ -24,7 +33,10 @@ export default function App() {
       <CoursePage
         courseId={route.id}
         onBack={() => setRoute({ name: "courses" })}
-        onLearn={(lectureTitle, outline) => setRoute({ name: "whiteboard" })}
+        // ⭐️ carry the lecture title + outline into the whiteboard — it auto-starts
+        onLearn={(lectureTitle, lectureOutline) =>
+          setRoute({ name: "whiteboard", lectureTitle, lectureOutline })
+        }
       />
     );
   }
