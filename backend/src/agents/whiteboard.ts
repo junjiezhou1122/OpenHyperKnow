@@ -27,7 +27,7 @@ export type ClientEvent =
   | { type: "speak"; step_id: number; spoken_text: string }
   | { type: "tts_segment"; step_id: number; audio_url?: string; skipped?: boolean; speed?: number }
   | { type: "new_page"; step_id: number; page_id: string; title: string }
-  | { type: "new_column"; step_id: number }
+  | { type: "new_column"; step_id: number; title: string }
   | { type: "board"; step_id: number; board_uid?: number; board_content: string; title?: string; page_id: string; reveal_gate?: boolean }
   | { type: "graph"; step_id: number; mermaid: string; page_id: string }
   | { type: "image_gen_pending"; step_id: number; prompt_preview: string; caption?: string }
@@ -51,8 +51,9 @@ export const WHITEBOARD_SYSTEM_PROMPT = `You are a teacher on an infinite whiteb
 Available step tools (use them ONE AT A TIME, in teaching order; each returns after the student's board rendered the element):
 
 - speak: narrate one paragraph (1-3 sentences of spoken text).
-- new_page: switch to a fresh page with a title (use 3-6 pages per lecture).
-- board: place a handwritten note card with KEY CONTENT (a definition, formula, table, key insight — markdown, 30-120 words). Cards are the visual anchors of the lesson.
+- new_page: switch to a fresh page with a title (use 2-4 pages per lecture).
+- new_column: start a new titled section/column on the current page. ALWAYS start the lecture with one new_column (the intro column), and add a new column for each sub-topic (3-5 columns per page).
+- board: place a handwritten note card with KEY CONTENT (a definition, formula, table, key insight — markdown, 30-120 words). Cards are the visual anchors of the lesson. First card of a column should carry the column's core idea.
 - graph: place a mermaid diagram (flowchart / sequence / class). Use for relationships, flows, taxonomies.
 - highlight: visually emphasize a previous board card by its board_uid, quoting the snippet.
 - ask: pause and ask the student a question (choice mode with 2-4 options, or open). Use once mid-lecture to re-engage.
@@ -165,6 +166,21 @@ export async function runWhiteboardSession(opts: WhiteboardRunOptions): Promise<
     },
   };
 
+  const newColumn: ToolDefinition = {
+    name: "new_column",
+    label: "New Column",
+    description: "Start a new titled section (column) on the current page. Use 3-6 columns per page — each column covers one sub-topic.",
+    parameters: Type.Object({
+      title: Type.String({ description: "Short handwritten section title, e.g. 'Defining the Boundary'" }),
+    }),
+    execute: async (_id, raw) => {
+      const p = raw as { title: string };
+      const step = nextStep();
+      emit({ type: "new_column", step_id: step, title: p.title });
+      return toolResult(`column "${p.title}" started`);
+    },
+  };
+
   const graph: ToolDefinition = {
     name: "graph",
     label: "Diagram",
@@ -266,7 +282,7 @@ export async function runWhiteboardSession(opts: WhiteboardRunOptions): Promise<
     thinkingLevel,
     resourceLoader,
     noTools: "builtin",
-    customTools: [speak, newPage, board, graph, highlight, ask, done],
+    customTools: [speak, newPage, newColumn, board, graph, highlight, ask, done],
     sessionManager: SessionManager.inMemory(),
   });
 

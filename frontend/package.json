@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.1",
     "@tailwindcss/vite": "^4.3.3",
     "katex": "^0.18.5",
     "mermaid": "^11.17.2",
